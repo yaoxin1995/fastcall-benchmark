@@ -1,0 +1,3 @@
+/home/yaoxin/fastcall_benchmark/build/CMakeFiles/rebuild_cache.dir
+/home/yaoxin/fastcall_benchmark/build/CMakeFiles/edit_cache.dir
+/home/yaoxin/fastcall_benchmark/build/CMakeFiles/fastcall-benchmarks.dir
