@@ -15,9 +15,9 @@
 #include <sys/auxv.h>
 
 struct mesg {
-		unsigned long yellow_address;
-		unsigned long purple_address;
-		unsigned long green_address;
+		unsigned long fce_region_address;
+		unsigned long secret_region;
+		unsigned long hidden_region[10];
 };
 
 
@@ -186,7 +186,63 @@ void ioctl_noop()
 
 }
 
+void fc_registration()
+{
+    uint64_t before = 0, after = 0;
+    std::vector<uint64_t> vec_reg_time, vec_dreg_time;
+    struct mesg *message = (struct mesg *)malloc(sizeof(struct mesg));
+    int fd = open(FCE_DEVICE_FILE, O_RDONLY);
 
+
+	if (fd < 0) 
+	    std::cout << "Failed to open device driver!" << std::endl;
+
+    for(int i = 0; i < SIZE_OF_SAMPLE; i++) {
+        
+        before = time_before();
+        int ret = ioctl(fd, IOCTL_REGISTRATION, message);
+        after = time_after();
+
+        uint64_t time = after - before;
+        if(time > 5000 && i >= 1)
+            time = vec_reg_time[i-1];
+        vec_reg_time.push_back(time);
+
+        before = time_before();
+        ret = ioctl(fd, IOCTL_DEREGISTRATION, message);
+        after = time_after();
+
+        time = after - before;
+        if(time > 5000 && i >= 1)
+            time = vec_dreg_time[i-1];
+        vec_dreg_time.push_back(time);
+        
+    }
+	
+    auto reg_triple= cal_variance(vec_reg_time);
+    auto reg_mean = std::get<0>(reg_triple);
+    auto reg_std_deviation = std::get<2>(reg_triple);
+
+    write_to_file("fc_registration.txt", vec_reg_time);
+    std::cout << "fc_registration mean:"<< reg_mean << std::endl;
+    std::cout << "fc_registration std_deviation:"<< reg_std_deviation << std::endl;
+    std::cout << "fc_registration median:"<< median(vec_reg_time) << std::endl;
+
+
+    auto dreg_triple= cal_variance(vec_dreg_time);
+    auto dreg_mean = std::get<0>(dreg_triple);
+    auto dreg_std_deviation = std::get<2>(dreg_triple);
+
+    write_to_file("fc_deregistration.txt", vec_dreg_time);
+    std::cout << "fc_deregistration mean:"<< dreg_mean << std::endl;
+    std::cout << "fc_deregistration std_deviation:"<< dreg_std_deviation << std::endl;
+    std::cout << "fc_deregistration median:"<< median(vec_dreg_time) << std::endl;
+
+
+    close(fd);
+    free(message);
+    
+} 
 
 
 void vdso_noop() 
@@ -231,9 +287,11 @@ void vdso_noop()
 
 int main() 
 {
-    ioctl_noop();
+    // ioctl_noop();
 
-    syscall_noop();
+    // syscall_noop();
 
-    vdso_noop();
+    // vdso_noop();
+
+    fc_registration();
 }
