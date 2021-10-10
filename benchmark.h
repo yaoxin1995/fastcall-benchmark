@@ -16,3 +16,9 @@
 
 #define NR_SYS_NOOP 443
 
+
+typedef long (*getcounter_t)(long);
+
+#define VDSO_MEG 729L
+
+

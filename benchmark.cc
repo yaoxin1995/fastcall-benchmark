@@ -12,7 +12,7 @@
 #include <numeric>
 #include <cmath>
 #include <tuple>
-
+#include <sys/auxv.h>
 
 struct mesg {
 		unsigned long yellow_address;
@@ -20,6 +20,9 @@ struct mesg {
 		unsigned long green_address;
 };
 
+
+extern "C" void vdso_init_from_sysinfo_ehdr(uintptr_t base);
+extern "C" void *vdso_sym(const char *version, const char *name);
 
 
 
@@ -59,7 +62,7 @@ void write_to_file(std::string f_name, const std::vector<uint64_t> &vec)
 
   std::ofstream myfile (f_name);
   if (myfile.is_open()) {
-    std::cout << "file opened" << std::endl;
+    std::cout << "file: " << f_name << "  saved" << std::endl;
     myfile << "This is a line.\n";
     myfile << "This is another line.\n";
     for (int count = 0; count < SIZE_OF_SAMPLE; count ++) {
@@ -132,7 +135,6 @@ void syscall_noop()
     auto triple= cal_variance(vec_time);
 
     auto mean = std::get<0>(triple);
-    auto variance = std::get<1>(triple);
     auto std_deviation = std::get<2>(triple);
 
     write_to_file("syscall_noop.txt", vec_time);
@@ -172,7 +174,6 @@ void ioctl_noop()
     auto triple= cal_variance(vec_time);
 
     auto mean = std::get<0>(triple);
-    auto variance = std::get<1>(triple);
     auto std_deviation = std::get<2>(triple);
 
 
@@ -186,9 +187,53 @@ void ioctl_noop()
 }
 
 
+
+
+void vdso_noop() 
+{
+    const char *VDSO_VERSION = "LINUX_2.6";
+    const char *name = "__vdso_getcounter";
+    uint64_t before = 0, after = 0;
+    std::vector<uint64_t> vec_time;
+
+    //vDSO setup 
+    vdso_init_from_sysinfo_ehdr(getauxval(AT_SYSINFO_EHDR));
+
+    getcounter_t func = (getcounter_t)(vdso_sym(VDSO_VERSION, name));
+    if (!func) {
+		printf("Could not find %s\n", name);
+		return;
+	}
+
+    for(int i = 0; i < SIZE_OF_SAMPLE; i++) {
+        before = time_before();
+        int ret = func(VDSO_MEG);
+        after = time_after();
+
+        uint64_t time = after - before;
+        if(time > 5000 && i >= 1)
+            time = vec_time[i-1];
+        vec_time.push_back(time);
+    }
+
+    auto triple= cal_variance(vec_time);
+    auto mean = std::get<0>(triple);
+    auto std_deviation = std::get<2>(triple);
+
+
+    write_to_file("vdso_noop.txt", vec_time);
+    std::cout << "vdso_noop mean:"<< mean << std::endl;
+    std::cout << "vdso_noop std_deviation:"<< std_deviation << std::endl;
+    std::cout << "vdso_noop median:"<< median(vec_time) << std::endl;
+
+}
+
+
 int main() 
 {
     ioctl_noop();
 
     syscall_noop();
+
+    vdso_noop();
 }
