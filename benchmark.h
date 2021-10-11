@@ -16,6 +16,9 @@
 
 #define NR_SYS_NOOP 443
 
+
+#define NR_FC_FORK 35
+
 typedef int (*fc_ptr)(void);
 typedef long (*getcounter_t)(long);
 

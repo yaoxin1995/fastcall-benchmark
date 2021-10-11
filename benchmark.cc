@@ -62,15 +62,17 @@ static inline void warm_up()
     time_after;
 }
 
-void write_to_file(std::string f_name, const std::array<uint64_t,SIZE_OF_SAMPLE>  &vec) 
+void write_to_file(std::string f_name, const std::array<uint64_t,SIZE_OF_SAMPLE>  &vec,
+            uint64_t mean, uint64_t std_deviation, uint64_t median) 
 {
 
 
   std::ofstream myfile (f_name);
   if (myfile.is_open()) {
     std::cout << "file: " << f_name << "  saved" << std::endl;
-    myfile << "This is a line.\n";
-    myfile << "This is another line.\n";
+    myfile << "file : " << f_name << " mean: " << mean << std::endl;
+    myfile << "file : " << f_name << " std_deviation: " << std_deviation << std::endl;
+    myfile << "file : " << f_name << " median: " << median << std::endl;
     for (int count = 0; count < SIZE_OF_SAMPLE; count ++) {
         if(!count%20)
             myfile <<"\n";
@@ -142,11 +144,12 @@ void syscall_noop()
 
     auto mean = std::get<0>(triple);
     auto std_deviation = std::get<2>(triple);
+    auto media = median(vec_time);
 
-    write_to_file("syscall_noop.txt", vec_time);
+    write_to_file("syscall_noop.txt", vec_time, mean, std_deviation, media);
     std::cout << "syscall_noop mean:"<< mean << std::endl;
     std::cout << "syscall_noop std_deviation:"<< std_deviation << std::endl;
-    std::cout << "syscall_noop median:"<< median(vec_time) << std::endl;
+    std::cout << "syscall_noop median:"<< media<< std::endl;
 
 }
 
@@ -183,7 +186,7 @@ void ioctl_noop()
     auto std_deviation = std::get<2>(triple);
 
 
-    write_to_file("ioctl_noop.txt", vec_time);
+    write_to_file("ioctl_noop.txt", vec_time, mean, std_deviation, median(vec_time));
     std::cout << "ioctl_noop mean:"<< mean << std::endl;
     std::cout << "ioctl_noop std_deviation:"<< std_deviation << std::endl;
     std::cout << "ioctl_noop median:"<< median(vec_time) << std::endl;
@@ -228,7 +231,7 @@ void fc_registration()
     auto reg_mean = std::get<0>(reg_triple);
     auto reg_std_deviation = std::get<2>(reg_triple);
 
-    write_to_file("fc_registration.txt", vec_reg_time);
+    write_to_file("fc_registration.txt", vec_reg_time, reg_mean, reg_std_deviation, median(vec_reg_time));
     std::cout << "fc_registration mean:"<< reg_mean << std::endl;
     std::cout << "fc_registration std_deviation:"<< reg_std_deviation << std::endl;
     std::cout << "fc_registration median:"<< median(vec_reg_time) << std::endl;
@@ -238,7 +241,7 @@ void fc_registration()
     auto dreg_mean = std::get<0>(dreg_triple);
     auto dreg_std_deviation = std::get<2>(dreg_triple);
 
-    write_to_file("fc_deregistration.txt", vec_dreg_time);
+    write_to_file("fc_deregistration.txt", vec_dreg_time, dreg_mean, dreg_std_deviation, median(vec_dreg_time));
     std::cout << "fc_deregistration mean:"<< dreg_mean << std::endl;
     std::cout << "fc_deregistration std_deviation:"<< dreg_std_deviation << std::endl;
     std::cout << "fc_deregistration median:"<< median(vec_dreg_time) << std::endl;
@@ -279,7 +282,7 @@ void fc_noop()
     auto mean = std::get<0>(triple);
     auto std_deviation = std::get<2>(triple);
 
-    write_to_file("fc_noop.txt", vec_time);
+    write_to_file("fc_noop.txt", vec_time, mean, std_deviation, median(vec_time));
     std::cout << "fc_noop mean:"<< mean << std::endl;
     std::cout << "fc_noop std_deviation:"<< std_deviation << std::endl;
     std::cout << "fc_regisfc_nooptration median:"<< median(vec_time) << std::endl;
@@ -315,7 +318,7 @@ void vdso_noop()
         after = time_after();
 
         uint64_t time = after - before;
-        if(time > 5000 && i >= 1)
+        if(time > 100 && i >= 1)
             time = vec_time[i-1];
         vec_time[i] = time;
     }
@@ -325,7 +328,7 @@ void vdso_noop()
     auto std_deviation = std::get<2>(triple);
 
 
-    write_to_file("vdso_noop.txt", vec_time);
+    write_to_file("vdso_noop.txt", vec_time, mean, std_deviation, median(vec_time));
     std::cout << "vdso_noop mean:"<< mean << std::endl;
     std::cout << "vdso_noop std_deviation:"<< std_deviation << std::endl;
     std::cout << "vdso_noop median:"<< median(vec_time) << std::endl;
@@ -343,14 +346,14 @@ void fork_simple()
         before = time_before();
         int pid = fork();
         if (pid < 0) {
-            std::cerr << "fork failed: " << std::strerror(errno) << '\n';
+            std::cout << "fork failed: " << std::strerror(errno) << '\n';
             return;
         } else if (pid == 0)
         exit(0);
         after = time_after();
 
         if (waitpid(pid, nullptr, 0) < 0) {
-            std::cerr << "waiting for child failed: " << std::strerror(errno) << '\n';
+            std::cout << "waiting for child failed: " << std::strerror(errno) << '\n';
             return;
         }
         vec_time[i] = after - before;
@@ -362,25 +365,79 @@ void fork_simple()
     auto std_deviation = std::get<2>(triple);
 
 
-    write_to_file("fork_simple.txt", vec_time);
+    write_to_file("fork_simple.txt", vec_time, mean, std_deviation, median(vec_time));
     std::cout << "fork_simple mean:"<< mean << std::endl;
     std::cout << "fork_simple std_deviation:"<< std_deviation << std::endl;
     std::cout << "fork_simple median:"<< median(vec_time) << std::endl;
 
 }
 
+void fc_fork()
+{
+    uint64_t before, after;
+    int i = 0;
+    std::array<uint64_t,SIZE_OF_SAMPLE>  vec_time;
+
+    struct mesg *message = new struct mesg[NR_FC_FORK];
+
+    int fd = open(FCE_DEVICE_FILE, O_RDONLY);
+	if (fd < 0) 
+	    std::cout << "Failed to open device driver!" << std::endl;
+    int ret = ioctl(fd, IOCTL_REGISTRATION, message);
+
+    for(int j = 0; j < NR_FC_FORK; j++) {
+        int ret = ioctl(fd, IOCTL_REGISTRATION, message[j]);
+    }
+
+
+    while (i < SIZE_OF_SAMPLE) {
+        before = time_before();
+        int pid = fork();
+        if (pid < 0) {
+            std::cout << "fork failed: " << std::strerror(errno) << '\n';
+            return;
+        } else if (pid == 0)
+        exit(0);
+        after = time_after();
+
+        if (waitpid(pid, nullptr, 0) < 0) {
+            std::cout << "waiting for child failed: " << std::strerror(errno) << '\n';
+            return;
+        }
+        vec_time[i] = after - before;
+        ++i;
+    }
+
+
+
+    auto triple= cal_variance(vec_time);
+    auto mean = std::get<0>(triple);
+    auto std_deviation = std::get<2>(triple);
+
+
+    write_to_file("fc_fork.txt", vec_time, mean, std_deviation, median(vec_time));
+    std::cout << "fc_fork mean:"<< mean << std::endl;
+    std::cout << "fc_fork std_deviation:"<< std_deviation << std::endl;
+    std::cout << "fc_fork median:"<< median(vec_time) << std::endl;
+
+    close(fd);
+    delete[] message;
+}
+
 
 int main() 
 {
-    // ioctl_noop();
+    //ioctl_noop();
 
-    // syscall_noop();
+    //syscall_noop();
 
-    // vdso_noop();
+    //vdso_noop();
 
     //fc_registration();
 
-    fc_noop(); 
+    //fc_noop(); 
 
+    //fork_simple();
 
+    fc_fork();
 }
