@@ -5,6 +5,9 @@ Benchmarks for the comparison of the fastcall mechanism with system calls, ioctl
 $ mkdir build
 
 $cd build
+
 $cmake ../build
+
+$sudo taskset -c 1 ./fastcall-benchmarks
 
 ```
