@@ -27,6 +27,7 @@ extern "C" void *vdso_sym(const char *version, const char *name);
 
 
 
+
 static inline uint64_t time_before(void)
 {
     uint64_t rax, rdx;
@@ -55,7 +56,11 @@ static inline uint64_t time_after(void)
     return (rdx << 32) + rax;
 }
 
-
+static inline void warm_up()
+{
+    time_before();
+    time_after;
+}
 
 void write_to_file(std::string f_name, const std::array<uint64_t,SIZE_OF_SAMPLE>  &vec) 
 {
@@ -192,9 +197,8 @@ void fc_registration()
     uint64_t before = 0, after = 0;
     std::array<uint64_t,SIZE_OF_SAMPLE>  vec_reg_time, vec_dreg_time;
     struct mesg *message = (struct mesg *)malloc(sizeof(struct mesg));
+
     int fd = open(FCE_DEVICE_FILE, O_RDONLY);
-
-
 	if (fd < 0) 
 	    std::cout << "Failed to open device driver!" << std::endl;
 
@@ -243,7 +247,50 @@ void fc_registration()
     close(fd);
     free(message);
     
-} 
+}
+
+void fc_noop() 
+{
+    uint64_t before = 0, after = 0;
+    std::array<uint64_t,SIZE_OF_SAMPLE>  vec_time;
+    struct mesg *message = (struct mesg *)malloc(sizeof(struct mesg));
+
+    int fd = open(FCE_DEVICE_FILE, O_RDONLY);
+	if (fd < 0) 
+	    std::cout << "Failed to open device driver!" << std::endl;
+    int ret = ioctl(fd, IOCTL_REGISTRATION, message);
+    fc_ptr fc_noop = (fc_ptr)message->fce_region_address;
+
+    warm_up();
+    for(int i = 0; i < SIZE_OF_SAMPLE; i++) {
+        
+        before = time_before();
+        int fce_ret = fc_noop();
+        after = time_after();
+
+        uint64_t time = after - before;
+        if(time > 70 && i >= 1)
+            time = vec_time[i-1];
+        vec_time[i] = time;
+        
+    }
+	
+    auto triple= cal_variance(vec_time);
+    auto mean = std::get<0>(triple);
+    auto std_deviation = std::get<2>(triple);
+
+    write_to_file("fc_noop.txt", vec_time);
+    std::cout << "fc_noop mean:"<< mean << std::endl;
+    std::cout << "fc_noop std_deviation:"<< std_deviation << std::endl;
+    std::cout << "fc_regisfc_nooptration median:"<< median(vec_time) << std::endl;
+
+
+
+    ret = ioctl(fd, IOCTL_DEREGISTRATION, message);
+    close(fd);
+    free(message);
+    
+}
 
 
 void vdso_noop() 
@@ -331,5 +378,9 @@ int main()
 
     // vdso_noop();
 
-    fc_registration();
+    //fc_registration();
+
+    fc_noop(); 
+
+
 }

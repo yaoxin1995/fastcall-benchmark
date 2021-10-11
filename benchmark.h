@@ -5,7 +5,7 @@
 #include <sys/ioctl.h>
 #include <unistd.h>
 
-#define SIZE_OF_SAMPLE 1000000
+#define SIZE_OF_SAMPLE 10000
 
 
 #define IOCTL_REGISTRATION 0
@@ -16,7 +16,7 @@
 
 #define NR_SYS_NOOP 443
 
-
+typedef int (*fc_ptr)(void);
 typedef long (*getcounter_t)(long);
 
 #define VDSO_MEG 729L
