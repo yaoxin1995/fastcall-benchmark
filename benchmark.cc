@@ -13,7 +13,8 @@
 #include <cmath>
 #include <tuple>
 #include <sys/auxv.h>
-
+#include <sys/wait.h>
+#include <cstring>
 struct mesg {
 		unsigned long fce_region_address;
 		unsigned long secret_region;
@@ -56,7 +57,7 @@ static inline uint64_t time_after(void)
 
 
 
-void write_to_file(std::string f_name, const std::vector<uint64_t> &vec) 
+void write_to_file(std::string f_name, const std::array<uint64_t,SIZE_OF_SAMPLE>  &vec) 
 {
 
 
@@ -76,7 +77,7 @@ void write_to_file(std::string f_name, const std::vector<uint64_t> &vec)
 
 }
 
-uint64_t median(std::vector<uint64_t> &vec)
+uint64_t median(std::array<uint64_t,SIZE_OF_SAMPLE>  &vec)
 {
     size_t n = vec.size()/ 2;
     std::nth_element(vec.begin(), vec.begin()+n, vec.end());
@@ -89,7 +90,7 @@ uint64_t median(std::vector<uint64_t> &vec)
 * calculate mean, variance, standard deviation
 */
 template<typename T>
-std::tuple<T,T,T> cal_variance(const std::vector<T> &vec) 
+std::tuple<T,T,T> cal_variance(std::array<T,SIZE_OF_SAMPLE> &vec) 
 {
     const size_t sz = vec.size();
     if (sz == 1) 
@@ -117,7 +118,7 @@ std::tuple<T,T,T> cal_variance(const std::vector<T> &vec)
 void syscall_noop() 
 {
     uint64_t before = 0, after = 0;
-    std::vector<uint64_t> vec_time;
+    std::array<uint64_t,SIZE_OF_SAMPLE>  vec_time;
 
 
     for(int i = 0; i < SIZE_OF_SAMPLE; i++) {
@@ -129,7 +130,7 @@ void syscall_noop()
         uint64_t time = after - before;
         if(after - before > 5000 && i >= 1)
             time = vec_time[i-1];
-        vec_time.push_back(time);
+        vec_time[i] = time;
     }
 
     auto triple= cal_variance(vec_time);
@@ -149,7 +150,7 @@ void ioctl_noop()
 {
     uint64_t before = 0, after = 0;
     struct mesg *message = (struct mesg *)malloc(sizeof(struct mesg));
-    std::vector<uint64_t> vec_time;
+    std::array<uint64_t,SIZE_OF_SAMPLE> vec_time;
 
 
     int fd = open(FCE_DEVICE_FILE, O_RDONLY);
@@ -167,7 +168,7 @@ void ioctl_noop()
         uint64_t time = after - before;
         if(time > 5000 && i >= 1)
             time = vec_time[i-1];
-        vec_time.push_back(time);
+        vec_time[i] = time;
     }
 
 
@@ -189,7 +190,7 @@ void ioctl_noop()
 void fc_registration()
 {
     uint64_t before = 0, after = 0;
-    std::vector<uint64_t> vec_reg_time, vec_dreg_time;
+    std::array<uint64_t,SIZE_OF_SAMPLE>  vec_reg_time, vec_dreg_time;
     struct mesg *message = (struct mesg *)malloc(sizeof(struct mesg));
     int fd = open(FCE_DEVICE_FILE, O_RDONLY);
 
@@ -206,7 +207,7 @@ void fc_registration()
         uint64_t time = after - before;
         if(time > 5000 && i >= 1)
             time = vec_reg_time[i-1];
-        vec_reg_time.push_back(time);
+        vec_reg_time[i] = time;
 
         before = time_before();
         ret = ioctl(fd, IOCTL_DEREGISTRATION, message);
@@ -215,7 +216,7 @@ void fc_registration()
         time = after - before;
         if(time > 5000 && i >= 1)
             time = vec_dreg_time[i-1];
-        vec_dreg_time.push_back(time);
+        vec_dreg_time[i] = time;
         
     }
 	
@@ -250,7 +251,7 @@ void vdso_noop()
     const char *VDSO_VERSION = "LINUX_2.6";
     const char *name = "__vdso_getcounter";
     uint64_t before = 0, after = 0;
-    std::vector<uint64_t> vec_time;
+    std::array<uint64_t,SIZE_OF_SAMPLE>  vec_time;
 
     //vDSO setup 
     vdso_init_from_sysinfo_ehdr(getauxval(AT_SYSINFO_EHDR));
@@ -269,7 +270,7 @@ void vdso_noop()
         uint64_t time = after - before;
         if(time > 5000 && i >= 1)
             time = vec_time[i-1];
-        vec_time.push_back(time);
+        vec_time[i] = time;
     }
 
     auto triple= cal_variance(vec_time);
@@ -281,6 +282,43 @@ void vdso_noop()
     std::cout << "vdso_noop mean:"<< mean << std::endl;
     std::cout << "vdso_noop std_deviation:"<< std_deviation << std::endl;
     std::cout << "vdso_noop median:"<< median(vec_time) << std::endl;
+
+}
+
+
+void fork_simple()
+{
+    uint64_t before, after;
+    int i = 0;
+    std::array<uint64_t,SIZE_OF_SAMPLE>  vec_time;
+
+    while (i < SIZE_OF_SAMPLE) {
+        before = time_before();
+        int pid = fork();
+        if (pid < 0) {
+            std::cerr << "fork failed: " << std::strerror(errno) << '\n';
+            return;
+        } else if (pid == 0)
+        exit(0);
+        after = time_after();
+
+        if (waitpid(pid, nullptr, 0) < 0) {
+            std::cerr << "waiting for child failed: " << std::strerror(errno) << '\n';
+            return;
+        }
+        vec_time[i] = after - before;
+        ++i;
+    }
+
+    auto triple= cal_variance(vec_time);
+    auto mean = std::get<0>(triple);
+    auto std_deviation = std::get<2>(triple);
+
+
+    write_to_file("fork_simple.txt", vec_time);
+    std::cout << "fork_simple mean:"<< mean << std::endl;
+    std::cout << "fork_simple std_deviation:"<< std_deviation << std::endl;
+    std::cout << "fork_simple median:"<< median(vec_time) << std::endl;
 
 }
 
